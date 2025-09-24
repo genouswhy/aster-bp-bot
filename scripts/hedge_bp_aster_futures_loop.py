@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_DOWN, getcontext
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-# 保证可直接运行找到 aster_dao / bp_dao
+# 保证可直接运行找到 aster_futures_dao / bp_dao
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
 	sys.path.insert(0, str(ROOT))
@@ -16,6 +16,7 @@ from bp_dao.markets import MarketsDAO
 from bp_dao.order import OrderDAO
 from aster_futures_dao.http import AsterFuturesClient
 from aster_futures_dao.trade import TradeDAO
+from aster_futures_dao.market import MarketDataDAO
 
 
 getcontext().prec = 28
@@ -148,14 +149,46 @@ def cancel_bp_order(orders: OrderDAO, order_id: str, symbol: str) -> dict:
 	return orders.cancel(orderId=order_id, symbol=symbol)
 
 
-def hedge_on_aster(trade: TradeDAO, symbol: str, side: str, quantity: str, recv_window: int) -> dict:
-	return trade.place_order(
-		symbol=symbol,
-		side=side,
-		order_type="MARKET",
-		quantity=float(quantity),
-		recv_window=recv_window,
-	)
+def hedge_on_aster_futures(trade: TradeDAO, symbol: str, side: str, quantity: str, recv_window: int) -> dict:
+	"""
+	Aster合约市价单对冲
+	"""
+	try:
+		order_resp = trade.place_order(
+			symbol=symbol,
+			side=side,
+			order_type="MARKET",
+			quantity=float(quantity),
+			recv_window=recv_window,
+		)
+		print(f"[Aster合约] 下单成功: {order_resp}")
+		return order_resp
+	except Exception as e:
+		print(f"[Aster合约] 下单失败: {e}")
+		raise e
+
+
+def check_aster_order_status(trade: TradeDAO, order_id: str, symbol: str) -> tuple[bool, str]:
+	"""
+	检查Aster合约订单状态
+	返回: (是否成交, 状态信息)
+	"""
+	try:
+		info = trade.get_order(symbol=symbol, order_id=int(order_id))
+		if isinstance(info, dict):
+			status = str(info.get("status") or "").upper()
+			if status == "FILLED":
+				return True, "FILLED"
+			filled = Decimal(str(info.get("executedQty") or info.get("executedQuantity") or "0"))
+			qty = Decimal(str(info.get("origQty") or info.get("quantity") or "0"))
+			if qty > 0 and filled >= qty:
+				return True, f"FILLED (filled: {filled}, total: {qty})"
+			return False, f"PENDING (filled: {filled}, total: {qty})"
+		return False, "UNKNOWN"
+	except Exception as e:
+		error_msg = str(e)
+		print(f"[DEBUG] 查询Aster合约订单 {order_id} 时发生错误: {e}")
+		return False, f"ERROR: {error_msg}"
 
 
 def get_next_funding_time() -> datetime:
@@ -226,13 +259,13 @@ def wait_until_funding_time():
 
 def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_symbol, 
 						quantity, offset_percent, price_increment, price_decimals, 
-						first_wait_seconds, recv_window, cycle_count):
+						first_wait_seconds, recv_window, cycle_count, trade_cfg):
 	"""
 	执行一轮完整的对冲策略
 	"""
 	print(f"[Cycle {cycle_count}] 开始执行对冲策略")
 	
-	# ---------- 第一腿：BP 做空，ASTER 市价买入对冲 ----------
+	# ---------- 第一腿：BP 做空，ASTER合约 市价买入对冲 ----------
 	try:
 		last = get_bp_last_price(bp_markets, bp_symbol)
 		# 价格 +0.2% 做空（Ask）
@@ -308,19 +341,35 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			time.sleep(1)
 
 		if filled:
-			print("[Leg1] BP 做空已成交，ASTER 市价买入对冲...")
-			buy_resp = hedge_on_aster(aster_trade, aster_symbol, side="BUY", quantity=quantity, recv_window=recv_window)
-			print("[Leg1] ASTER 市价买入回执:", buy_resp)
+			print("[Leg1] BP 做空已成交，ASTER合约 市价买入对冲...")
+			try:
+				buy_resp = hedge_on_aster_futures(aster_trade, aster_symbol, side="BUY", quantity=quantity, recv_window=recv_window)
+				print("[Leg1] ASTER合约 市价买入回执:", buy_resp)
+				
+				# 检查Aster合约订单状态
+				if isinstance(buy_resp, dict) and "orderId" in buy_resp:
+					aster_order_id = str(buy_resp["orderId"])
+					print(f"[Leg1] 检查Aster合约订单状态: {aster_order_id}")
+					aster_filled, aster_status = check_aster_order_status(aster_trade, aster_order_id, aster_symbol)
+					if aster_filled:
+						print(f"[Leg1] ASTER合约订单已成交: {aster_status}")
+					else:
+						print(f"[Leg1] ASTER合约订单状态: {aster_status}")
+				else:
+					print("[Leg1] 无法获取Aster合约订单ID，跳过状态检查")
+			except Exception as e:
+				print(f"[Leg1] ASTER合约对冲失败: {e}")
 		else:
 			print(f"[Leg1] 警告：BP 做空在 {max_retries} 次重试后仍未成交，跳过对冲。")
 	except Exception as e:
 		print(f"[Leg1] 异常: {e}")
 
-		print(f"休眠 20 秒...")
-		time.sleep(20)
+	# 使用配置文件中的等待时间
+	between_legs_sleep = trade_cfg.get("between_legs_sleep", 20)
+	print(f"休眠 {between_legs_sleep} 秒...")
+	time.sleep(between_legs_sleep)
 
-
-	# ---------- 第二腿：BP 做多，ASTER 市价卖出对冲 ----------
+	# ---------- 第二腿：BP 做多，ASTER合约 市价卖出对冲 ----------
 	try:
 		last = get_bp_last_price(bp_markets, bp_symbol)
 		# 价格 -0.2% 做多（Bid）
@@ -396,9 +445,24 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			time.sleep(1)
 
 		if filled:
-			print("[Leg2] BP 做多已成交，ASTER 市价卖出对冲...")
-			sell_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
-			print("[Leg2] ASTER 市价卖出回执:", sell_resp)
+			print("[Leg2] BP 做多已成交，ASTER合约 市价卖出对冲...")
+			try:
+				sell_resp = hedge_on_aster_futures(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
+				print("[Leg2] ASTER合约 市价卖出回执:", sell_resp)
+				
+				# 检查Aster合约订单状态
+				if isinstance(sell_resp, dict) and "orderId" in sell_resp:
+					aster_order_id = str(sell_resp["orderId"])
+					print(f"[Leg2] 检查Aster合约订单状态: {aster_order_id}")
+					aster_filled, aster_status = check_aster_order_status(aster_trade, aster_order_id, aster_symbol)
+					if aster_filled:
+						print(f"[Leg2] ASTER合约订单已成交: {aster_status}")
+					else:
+						print(f"[Leg2] ASTER合约订单状态: {aster_status}")
+				else:
+					print("[Leg2] 无法获取Aster合约订单ID，跳过状态检查")
+			except Exception as e:
+				print(f"[Leg2] ASTER合约对冲失败: {e}")
 		else:
 			print(f"[Leg2] 警告：BP 做多在 {max_retries} 次重试后仍未成交，跳过对冲。")
 	except Exception as e:
@@ -407,7 +471,7 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 
 def main():
 	if len(sys.argv) < 2:
-		print("用法: python scripts/hedge_bp_aster_loop.py config/hedge.yaml")
+		print("用法: python scripts/hedge_bp_aster_futures_loop.py config/hedge.yaml")
 		sys.exit(1)
 	cfg = load_config(sys.argv[1])
 
@@ -460,7 +524,7 @@ def main():
 	price_increment, price_decimals = get_bp_price_increment_and_decimals(bp_markets, bp_symbol, debug=bp_client.debug)
 
 	print("=" * 60)
-	print("开始循环对冲策略")
+	print("开始循环对冲策略 (BP + Aster合约)")
 	print("=" * 60)
 	
 	cycle_count = 0
@@ -477,7 +541,7 @@ def main():
 		execute_hedge_cycle(
 			bp_markets, bp_orders, aster_trade, bp_symbol, aster_symbol,
 			quantity, offset_percent, price_increment, price_decimals,
-			first_wait_seconds, recv_window, cycle_count
+			first_wait_seconds, recv_window, cycle_count, trade_cfg
 		)
 		
 		# 循环间隔
