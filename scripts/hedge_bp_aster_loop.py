@@ -435,19 +435,109 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		else:
 			print(f"[Leg2] 警告：BP 做多在 {max_wait_seconds} 秒后仍未成交，需要平仓第一腿持仓。")
 			try:
-				# 平仓第一腿的持仓：ASTER市价卖出
-				print("[Leg2] 开始平仓第一腿持仓：ASTER市价卖出...")
-				close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
-				print("[Leg2] 第一腿平仓回执:", close_resp)
+				# 1. 先查询ASTER现货仓位
+				print("[Leg2] 查询ASTER现货仓位...")
+				from aster_futures_dao.account import AccountDAO
+				aster_account = AccountDAO(aster_trade.client)
+				balances = aster_account.get_balance(recv_window)
+				
+				aster_balance = 0
+				if balances and isinstance(balances, list):
+					for balance in balances:
+						if balance.get("asset") == aster_symbol.replace("USDT", ""):
+							aster_balance = float(balance.get("walletBalance", 0))
+							if aster_balance > 0:
+								print(f"[Leg2] 发现ASTER现货余额: {aster_balance}")
+								break
+				
+				if aster_balance > 0:
+					# 2. 平仓ASTER现货持仓
+					print(f"[Leg2] 开始平仓ASTER现货持仓: {aster_balance}...")
+					close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=str(aster_balance), recv_window=recv_window)
+					print("[Leg2] ASTER现货平仓回执:", close_resp)
+				else:
+					print("[Leg2] 未发现ASTER现货余额，跳过平仓")
+				
+				# 3. 查询BP仓位
+				print("[Leg2] 查询BP仓位...")
+				from bp_dao.account import AccountDAO as BPAccountDAO
+				bp_account = BPAccountDAO(bp_orders.client)
+				bp_positions = bp_account.positions(bp_symbol)
+				
+				bp_position_size = 0
+				if bp_positions and isinstance(bp_positions, list):
+					for pos in bp_positions:
+						if pos.get("symbol") == bp_symbol:
+							position_amt = float(pos.get("size", 0))
+							if position_amt != 0:
+								bp_position_size = abs(position_amt)
+								print(f"[Leg2] 发现BP仓位: {position_amt}")
+								break
+				
+				if bp_position_size > 0:
+					# 4. 平仓BP持仓
+					print(f"[Leg2] 开始平仓BP持仓: {bp_position_size}...")
+					# 获取最新价格进行市价平仓
+					last = get_bp_last_price(bp_markets, bp_symbol)
+					close_price = last * Decimal("0.99") if last else Decimal("1")  # 稍微低于市价确保成交
+					close_price_str = format(close_price, f".{price_decimals}f")
+					
+					close_resp = place_bp_limit_order(bp_orders, bp_symbol, side="Ask", price_str=close_price_str, quantity=str(bp_position_size))
+					print("[Leg2] BP平仓回执:", close_resp)
+					
+					# 检查平仓订单状态
+					if isinstance(close_resp, list) and len(close_resp) > 0:
+						close_order_id = extract_bp_order_id(close_resp)
+						if close_order_id:
+							close_status, _ = check_bp_order_status_alternative(bp_orders, close_order_id, bp_symbol)
+							if close_status:
+								print(f"[Leg2] BP平仓订单状态: {close_status}")
+					else:
+						print("[Leg2] 无法获取BP平仓订单ID，跳过状态检查")
+				else:
+					print("[Leg2] 未发现BP仓位，跳过平仓")
+					
 			except Exception as close_e:
-				print(f"[Leg2] 第一腿平仓失败: {close_e}")
+				print(f"[Leg2] 平仓操作失败: {close_e}")
 	except Exception as e:
 		print(f"[Leg2] 异常: {e}")
 		# 异常时也需要尝试平仓
 		try:
-			print("[Leg2] 异常处理：尝试平仓第一腿持仓...")
-			close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
-			print("[Leg2] 异常平仓回执:", close_resp)
+			print("[Leg2] 异常处理：尝试平仓所有持仓...")
+			
+			# 查询并平仓ASTER现货仓位
+			from aster_futures_dao.account import AccountDAO
+			aster_account = AccountDAO(aster_trade.client)
+			balances = aster_account.get_balance(recv_window)
+			
+			if balances and isinstance(balances, list):
+				for balance in balances:
+					if balance.get("asset") == aster_symbol.replace("USDT", ""):
+						aster_balance = float(balance.get("walletBalance", 0))
+						if aster_balance > 0:
+							print(f"[Leg2] 异常平仓ASTER现货余额: {aster_balance}")
+							close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=str(aster_balance), recv_window=recv_window)
+							print("[Leg2] 异常ASTER现货平仓回执:", close_resp)
+							break
+			
+			# 查询并平仓BP仓位
+			from bp_dao.account import AccountDAO as BPAccountDAO
+			bp_account = BPAccountDAO(bp_orders.client)
+			bp_positions = bp_account.positions(bp_symbol)
+			
+			if bp_positions and isinstance(bp_positions, list):
+				for pos in bp_positions:
+					if pos.get("symbol") == bp_symbol:
+						position_amt = float(pos.get("size", 0))
+						if position_amt != 0:
+							print(f"[Leg2] 异常平仓BP仓位: {position_amt}")
+							last = get_bp_last_price(bp_markets, bp_symbol)
+							close_price = last * Decimal("0.99") if last else Decimal("1")
+							close_price_str = format(close_price, f".{price_decimals}f")
+							close_resp = place_bp_limit_order(bp_orders, bp_symbol, side="Ask", price_str=close_price_str, quantity=str(abs(position_amt)))
+							print("[Leg2] 异常BP平仓回执:", close_resp)
+							break
+							
 		except Exception as close_e:
 			print(f"[Leg2] 异常平仓也失败: {close_e}")
 
