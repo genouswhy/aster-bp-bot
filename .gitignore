@@ -28,3 +28,4 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+config/hedge_futures.yaml
