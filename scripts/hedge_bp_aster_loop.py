@@ -265,15 +265,13 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		# 持续监控直到成交为止
 		filled = False
 		monitor_start = time.time()
-		retry_count = 0
-		max_retries = 100  # 最多重试100次
 		max_wait_seconds = monitor_timeout_seconds  # 最大等待时间（从配置文件读取）
 		max_order_wait_seconds = order_wait_seconds  # 单个订单最大等待成交时间（从配置文件读取）
 		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg1] 开始监控 BP 做空订单 {order_id}，将持续监控直到成交...")
 		
-		while not filled and retry_count <= max_retries:
+		while not filled:
 			elapsed = int(time.time() - monitor_start)
 			current_time = time.time()
 			
@@ -298,9 +296,9 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			if elapsed % 1 == 0 and elapsed > 0:
 				print(f"[Leg1] 监控中... 已等待 {elapsed}s，订单 {order_id} 未成交")
 			
-			# 检查是否需要重新挂单（基于等待时间，而不是整除判断）
+			# 检查是否需要重新挂单（基于等待时间）
 			order_wait_time = current_time - last_retry_time
-			if order_wait_time >= max_order_wait_seconds and retry_count < max_retries:
+			if order_wait_time >= max_order_wait_seconds:
 				print(f"[Leg1] 订单已等待 {int(order_wait_time)} 秒，取消当前订单并重新挂单...")
 				try:
 					_ = cancel_bp_order(bp_orders, order_id, bp_symbol)
@@ -327,9 +325,8 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 				if not order_id:
 					raise RuntimeError("无法解析重挂后的 BP 订单ID")
 				
-				retry_count += 1
 				last_retry_time = current_time  # 重置重试时间
-				print(f"[Leg1] 第 {retry_count} 次重挂完成，继续监控订单 {order_id}...")
+				print(f"[Leg1] 重挂完成，继续监控订单 {order_id}...")
 			
 			time.sleep(1)
 
@@ -338,9 +335,11 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			buy_resp = hedge_on_aster(aster_trade, aster_symbol, side="BUY", quantity=quantity, recv_window=recv_window)
 			print("[Leg1] ASTER 市价买入回执:", buy_resp)
 		else:
-			print(f"[Leg1] 警告：BP 做空在 {max_retries} 次重试后仍未成交，跳过对冲。")
+			print(f"[Leg1] 警告：BP 做空在 {max_wait_seconds} 秒后仍未成交，跳过第二腿，直接开始下一轮。")
+			return  # 直接返回，不执行第二腿
 	except Exception as e:
 		print(f"[Leg1] 异常: {e}")
+		return  # 异常时也跳过第二腿
 
 		print(f"休眠 20 秒...")
 		time.sleep(20)
@@ -364,15 +363,13 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		# 持续监控直到成交为止
 		filled = False
 		monitor_start = time.time()
-		retry_count = 0
-		max_retries = 100  # 最多重试100次
 		max_wait_seconds = monitor_timeout_seconds  # 最大等待时间（从配置文件读取）
 		max_order_wait_seconds = order_wait_seconds  # 单个订单最大等待成交时间（从配置文件读取）
 		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg2] 开始监控 BP 做多订单 {order_id}，将持续监控直到成交...")
 		
-		while not filled and retry_count <= max_retries:
+		while not filled:
 			elapsed = int(time.time() - monitor_start)
 			current_time = time.time()
 			
@@ -397,9 +394,9 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			if elapsed % 1 == 0 and elapsed > 0:
 				print(f"[Leg2] 监控中... 已等待 {elapsed}s，订单 {order_id} 未成交")
 			
-			# 检查是否需要重新挂单（基于等待时间，而不是整除判断）
+			# 检查是否需要重新挂单（基于等待时间）
 			order_wait_time = current_time - last_retry_time
-			if order_wait_time >= max_order_wait_seconds and retry_count < max_retries:
+			if order_wait_time >= max_order_wait_seconds:
 				print(f"[Leg2] 订单已等待 {int(order_wait_time)} 秒，取消当前订单并重新挂单...")
 				try:
 					_ = cancel_bp_order(bp_orders, order_id, bp_symbol)
@@ -426,9 +423,8 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 				if not order_id:
 					raise RuntimeError("无法解析重挂后的 BP 订单ID")
 				
-				retry_count += 1
 				last_retry_time = current_time  # 重置重试时间
-				print(f"[Leg2] 第 {retry_count} 次重挂完成，继续监控订单 {order_id}...")
+				print(f"[Leg2] 重挂完成，继续监控订单 {order_id}...")
 			
 			time.sleep(1)
 
@@ -437,9 +433,23 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			sell_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
 			print("[Leg2] ASTER 市价卖出回执:", sell_resp)
 		else:
-			print(f"[Leg2] 警告：BP 做多在 {max_retries} 次重试后仍未成交，跳过对冲。")
+			print(f"[Leg2] 警告：BP 做多在 {max_wait_seconds} 秒后仍未成交，需要平仓第一腿持仓。")
+			try:
+				# 平仓第一腿的持仓：ASTER市价卖出
+				print("[Leg2] 开始平仓第一腿持仓：ASTER市价卖出...")
+				close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
+				print("[Leg2] 第一腿平仓回执:", close_resp)
+			except Exception as close_e:
+				print(f"[Leg2] 第一腿平仓失败: {close_e}")
 	except Exception as e:
 		print(f"[Leg2] 异常: {e}")
+		# 异常时也需要尝试平仓
+		try:
+			print("[Leg2] 异常处理：尝试平仓第一腿持仓...")
+			close_resp = hedge_on_aster(aster_trade, aster_symbol, side="SELL", quantity=quantity, recv_window=recv_window)
+			print("[Leg2] 异常平仓回执:", close_resp)
+		except Exception as close_e:
+			print(f"[Leg2] 异常平仓也失败: {close_e}")
 
 
 def main():
