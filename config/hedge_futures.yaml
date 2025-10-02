@@ -21,3 +21,5 @@ trade:
   between_legs_sleep: 10
   stop_before_funding_minutes: 5
   cycle_sleep: 6
+  max_order_wait_seconds: 10  # 单个订单最大等待成交时间
+  max_monitor_seconds: 300    # 最大监控时间（5分钟）

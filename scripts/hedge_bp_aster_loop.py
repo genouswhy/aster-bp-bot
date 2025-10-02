@@ -240,7 +240,8 @@ def wait_until_funding_time():
 
 def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_symbol, 
 						quantity, offset_percent, price_increment, price_decimals, 
-						first_wait_seconds, recv_window, cycle_count):
+						first_wait_seconds, recv_window, cycle_count,
+						order_wait_seconds, monitor_timeout_seconds):
 	"""
 	执行一轮完整的对冲策略
 	"""
@@ -266,8 +267,8 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		monitor_start = time.time()
 		retry_count = 0
 		max_retries = 100  # 最多重试100次
-		max_wait_seconds = 300  # 最大等待时间5分钟
-		max_order_wait_seconds = 10  # 单个订单最大等待成交时间10秒
+		max_wait_seconds = monitor_timeout_seconds  # 最大等待时间（从配置文件读取）
+		max_order_wait_seconds = order_wait_seconds  # 单个订单最大等待成交时间（从配置文件读取）
 		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg1] 开始监控 BP 做空订单 {order_id}，将持续监控直到成交...")
@@ -365,8 +366,8 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		monitor_start = time.time()
 		retry_count = 0
 		max_retries = 100  # 最多重试100次
-		max_wait_seconds = 300  # 最大等待时间5分钟
-		max_order_wait_seconds = 10  # 单个订单最大等待成交时间10秒
+		max_wait_seconds = monitor_timeout_seconds  # 最大等待时间（从配置文件读取）
+		max_order_wait_seconds = order_wait_seconds  # 单个订单最大等待成交时间（从配置文件读取）
 		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg2] 开始监控 BP 做多订单 {order_id}，将持续监控直到成交...")
@@ -482,6 +483,10 @@ def main():
 	# 资金费率相关配置
 	stop_before_funding_minutes = int(trade_cfg.get("stop_before_funding_minutes", 5))  # 资金费率前几分钟停止
 	cycle_sleep = int(trade_cfg.get("cycle_sleep", 60))  # 每轮循环间隔秒数
+	
+	# 监控和重试配置
+	order_wait_seconds = int(trade_cfg.get("max_order_wait_seconds", 10))  # 单个订单最大等待成交时间
+	monitor_timeout_seconds = int(trade_cfg.get("max_monitor_seconds", 300))  # 最大监控时间
 
 	# 确定符号与步进
 	try:
@@ -513,7 +518,8 @@ def main():
 		execute_hedge_cycle(
 			bp_markets, bp_orders, aster_trade, bp_symbol, aster_symbol,
 			quantity, offset_percent, price_increment, price_decimals,
-			first_wait_seconds, recv_window, cycle_count
+			first_wait_seconds, recv_window, cycle_count,
+			order_wait_seconds, monitor_timeout_seconds
 		)
 		
 		# 循环间隔
