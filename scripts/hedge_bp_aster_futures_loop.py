@@ -300,11 +300,14 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		retry_count = 0
 		max_retries = 100  # 最多重试100次
 		max_wait_seconds = 300  # 最大等待时间5分钟
+		max_order_wait_seconds = 10  # 单个订单最大等待成交时间10秒
+		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg1] 开始监控 BP 做空订单 {order_id}，将持续监控直到成交...")
 		
 		while not filled and retry_count <= max_retries:
 			elapsed = int(time.time() - monitor_start)
+			current_time = time.time()
 			
 			# 检查是否超过最大等待时间
 			if elapsed >= max_wait_seconds:
@@ -327,9 +330,10 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			if elapsed % 1 == 0 and elapsed > 0:
 				print(f"[Leg1] 监控中... 已等待 {elapsed}s，订单 {order_id} 未成交")
 			
-			# 每10秒检查一次是否需要重新挂单
-			if elapsed > 0 and elapsed % 10 == 0 and retry_count < max_retries:
-				print(f"[Leg1] 已等待 {elapsed} 秒，取消当前订单并重新挂单...")
+			# 检查是否需要重新挂单（基于等待时间，而不是整除判断）
+			order_wait_time = current_time - last_retry_time
+			if order_wait_time >= max_order_wait_seconds and retry_count < max_retries:
+				print(f"[Leg1] 订单已等待 {int(order_wait_time)} 秒，取消当前订单并重新挂单...")
 				try:
 					_ = cancel_bp_order(bp_orders, order_id, bp_symbol)
 					print(f"[Leg1] 订单 {order_id} 已取消")
@@ -356,6 +360,7 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 					raise RuntimeError("无法解析重挂后的 BP 订单ID")
 				
 				retry_count += 1
+				last_retry_time = current_time  # 重置重试时间
 				print(f"[Leg1] 第 {retry_count} 次重挂完成，继续监控订单 {order_id}...")
 			
 			time.sleep(1)
@@ -410,11 +415,14 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		retry_count = 0
 		max_retries = 100  # 最多重试100次
 		max_wait_seconds = 300  # 最大等待时间5分钟
+		max_order_wait_seconds = 10  # 单个订单最大等待成交时间10秒
+		last_retry_time = monitor_start  # 上次重试时间
 		
 		print(f"[Leg2] 开始监控 BP 做多订单 {order_id}，将持续监控直到成交...")
 		
 		while not filled and retry_count <= max_retries:
 			elapsed = int(time.time() - monitor_start)
+			current_time = time.time()
 			
 			# 检查是否超过最大等待时间
 			if elapsed >= max_wait_seconds:
@@ -437,9 +445,10 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			if elapsed % 1 == 0 and elapsed > 0:
 				print(f"[Leg2] 监控中... 已等待 {elapsed}s，订单 {order_id} 未成交")
 			
-			# 每10秒检查一次是否需要重新挂单
-			if elapsed > 0 and elapsed % 10 == 0 and retry_count < max_retries:
-				print(f"[Leg2] 已等待 {elapsed} 秒，取消当前订单并重新挂单...")
+			# 检查是否需要重新挂单（基于等待时间，而不是整除判断）
+			order_wait_time = current_time - last_retry_time
+			if order_wait_time >= max_order_wait_seconds and retry_count < max_retries:
+				print(f"[Leg2] 订单已等待 {int(order_wait_time)} 秒，取消当前订单并重新挂单...")
 				try:
 					_ = cancel_bp_order(bp_orders, order_id, bp_symbol)
 					print(f"[Leg2] 订单 {order_id} 已取消")
@@ -466,6 +475,7 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 					raise RuntimeError("无法解析重挂后的 BP 订单ID")
 				
 				retry_count += 1
+				last_retry_time = current_time  # 重置重试时间
 				print(f"[Leg2] 第 {retry_count} 次重挂完成，继续监控订单 {order_id}...")
 			
 			time.sleep(1)
