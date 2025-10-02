@@ -394,10 +394,14 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			except Exception as e:
 				print(f"[Leg1] ASTER合约对冲失败: {e}")
 		else:
-			print(f"[Leg1] 警告：BP 做空在 {max_wait_seconds} 秒后仍未成交，跳过第二腿，直接开始下一轮。")
+			print(f"[Leg1] 警告：BP 做空在 {max_wait_seconds} 秒后仍未成交，撤销所有挂单并跳过第二腿，直接开始下一轮。")
+			# 撤销BP所有挂单
+			cancel_all_bp_orders(bp_orders, bp_symbol)
 			return  # 直接返回，不执行第二腿
 	except Exception as e:
 		print(f"[Leg1] 异常: {e}")
+		# 异常时也撤销所有挂单
+		cancel_all_bp_orders(bp_orders, bp_symbol)
 		return  # 异常时也跳过第二腿
 
 	# 使用配置文件中的等待时间
@@ -508,7 +512,10 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 			except Exception as e:
 				print(f"[Leg2] ASTER合约对冲失败: {e}")
 		else:
-			print(f"[Leg2] 警告：BP 做多在 {max_wait_seconds} 秒后仍未成交，平仓第一腿持仓。")
+			print(f"[Leg2] 警告：BP 做多在 {max_wait_seconds} 秒后仍未成交，撤销所有挂单并平仓第一腿持仓。")
+			# 先撤销BP所有挂单
+			cancel_all_bp_orders(bp_orders, bp_symbol)
+			
 			try:
 				# 1. 先查询ASTER合约仓位
 				print("[Leg2] 查询ASTER合约仓位...")
@@ -586,9 +593,12 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 				print(f"[Leg2] 平仓操作失败: {close_e}")
 	except Exception as e:
 		print(f"[Leg2] 异常: {e}")
-		# 异常时也需要尝试平仓
+		# 异常时也需要撤销所有挂单并尝试平仓
 		try:
-			print("[Leg2] 异常处理：尝试平仓所有持仓...")
+			print("[Leg2] 异常处理：撤销所有挂单并尝试平仓所有持仓...")
+			
+			# 先撤销BP所有挂单
+			cancel_all_bp_orders(bp_orders, bp_symbol)
 			
 			# 查询并平仓ASTER合约仓位
 			from aster_futures_dao.account import AccountDAO
