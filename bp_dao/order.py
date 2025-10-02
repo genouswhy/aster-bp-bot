@@ -61,3 +61,19 @@ class OrderDAO:
 		if symbol is not None:
 			params["symbol"] = symbol
 		return self.client.request("GET", "/api/v1/order", params=params or None, instruction="orderQuery", signed=True)
+
+	def get_open_orders(self, symbol: Optional[str] = None, marketType: Optional[str] = None) -> Any:
+		# GET /api/v1/orders, instruction: orderQueryAll
+		params: Dict[str, Any] = {}
+		if symbol is not None:
+			params["symbol"] = symbol
+		if marketType is not None:
+			params["marketType"] = marketType
+		return self.client.request("GET", "/api/v1/orders", params=params or None, instruction="orderQueryAll", signed=True)
+
+	def cancel_all_orders(self, symbol: str, orderType: Optional[str] = None) -> Any:
+		# DELETE /api/v1/orders, instruction: orderCancelAll
+		body: Dict[str, Any] = {"symbol": symbol}
+		if orderType is not None:
+			body["orderType"] = orderType
+		return self.client.request("DELETE", "/api/v1/orders", instruction="orderCancelAll", json_body=body, signed=True)
