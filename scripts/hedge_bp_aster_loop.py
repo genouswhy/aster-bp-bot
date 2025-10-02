@@ -71,17 +71,31 @@ def get_bp_price_increment_and_decimals(markets: MarketsDAO, symbol: str, debug:
 	mk = markets.market(symbol)
 	price_increment_s = None
 	if isinstance(mk, dict):
-		price_increment_s = mk.get("priceIncrement") or mk.get("tickSize") or mk.get("priceTickSize")
+		# 优先从filters.price.tickSize获取价格步进
+		filters = mk.get("filters", {})
+		price_filters = filters.get("price", {})
+		price_increment_s = price_filters.get("tickSize")
+		
+		# 如果没有找到，尝试其他字段
+		if not price_increment_s:
+			price_increment_s = mk.get("priceIncrement") or mk.get("tickSize") or mk.get("priceTickSize")
+		
+		# 最后尝试从priceDecimal推导
 		if not price_increment_s:
 			pd = mk.get("priceDecimal") or mk.get("pricePrecision")
 			if pd is not None:
 				price_increment_s = str(Decimal(1) / (Decimal(10) ** int(pd)))
+	
+	# 默认值
 	if not price_increment_s:
 		price_increment_s = "0.0001"
+	
 	price_increment = Decimal(str(price_increment_s))
 	price_decimals = decimals_from_tick(str(price_increment))
 	if debug:
 		print(f"[BP] market price_increment={price_increment} (decimals={price_decimals}) raw_market_keys={list(mk.keys()) if isinstance(mk, dict) else 'N/A'}")
+		if "filters" in mk:
+			print(f"[BP] filters structure: {mk['filters']}")
 	return price_increment, price_decimals
 
 
