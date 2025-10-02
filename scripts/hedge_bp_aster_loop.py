@@ -265,7 +265,7 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		filled = False
 		monitor_start = time.time()
 		retry_count = 0
-		max_retries = 20  # 最多重试20次
+		max_retries = 100  # 最多重试100次
 		max_wait_seconds = 300  # 最大等待时间5分钟
 		
 		print(f"[Leg1] 开始监控 BP 做空订单 {order_id}，将持续监控直到成交...")
@@ -359,7 +359,7 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		filled = False
 		monitor_start = time.time()
 		retry_count = 0
-		max_retries = 20  # 最多重试20次
+		max_retries = 100  # 最多重试100次
 		max_wait_seconds = 300  # 最大等待时间5分钟
 		
 		print(f"[Leg2] 开始监控 BP 做多订单 {order_id}，将持续监控直到成交...")
