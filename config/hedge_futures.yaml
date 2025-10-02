@@ -1,0 +1,23 @@
+bp:
+  api_public_key_b64: "TwvONuqYt3veDIM2cCMDGYOJz2vJ+Qz6SwUUoQ3kQvA="
+  api_secret_key_b64: "FbNV9pX4A/q8GlHnyA4KfANN1PbhX4NZ/b0KSDOecs0="
+  base_url: "https://api.backpack.exchange"
+  symbol: "SOL_USDC_PERP"
+  window: 5000
+  debug: false
+
+aster:
+  api_key: "5489877243f5ad183d7de45daff5352e1a88e56f58a1aecbe1fec8f63e22ead2"
+  api_secret: "23a56d7161e5e8393b10a26053c5debea6c6081c0d1b642688f27f62768ea6c1"
+  base_url: "https://fapi.asterdex.com"
+  symbol: "SOLUSDT"
+  recv_window: 5000
+  debug: false
+
+trade:
+  quantity: "4"
+  offset_percent: 0.1
+  first_wait_seconds: 10
+  between_legs_sleep: 10
+  stop_before_funding_minutes: 5
+  cycle_sleep: 6

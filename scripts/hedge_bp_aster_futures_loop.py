@@ -299,11 +299,17 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		monitor_start = time.time()
 		retry_count = 0
 		max_retries = 20  # 最多重试20次
+		max_wait_seconds = 300  # 最大等待时间5分钟
 		
 		print(f"[Leg1] 开始监控 BP 做空订单 {order_id}，将持续监控直到成交...")
 		
 		while not filled and retry_count <= max_retries:
 			elapsed = int(time.time() - monitor_start)
+			
+			# 检查是否超过最大等待时间
+			if elapsed >= max_wait_seconds:
+				print(f"[Leg1] 订单 {order_id} 已等待 {elapsed} 秒，超过最大等待时间 {max_wait_seconds} 秒，停止监控")
+				break
 			
 			# 使用新的状态检查函数
 			status_result, status_info = check_bp_order_status_alternative(bp_orders, order_id, bp_symbol)
@@ -403,11 +409,17 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 		monitor_start = time.time()
 		retry_count = 0
 		max_retries = 20  # 最多重试20次
+		max_wait_seconds = 300  # 最大等待时间5分钟
 		
 		print(f"[Leg2] 开始监控 BP 做多订单 {order_id}，将持续监控直到成交...")
 		
 		while not filled and retry_count <= max_retries:
 			elapsed = int(time.time() - monitor_start)
+			
+			# 检查是否超过最大等待时间
+			if elapsed >= max_wait_seconds:
+				print(f"[Leg2] 订单 {order_id} 已等待 {elapsed} 秒，超过最大等待时间 {max_wait_seconds} 秒，停止监控")
+				break
 			
 			# 使用新的状态检查函数
 			status_result, status_info = check_bp_order_status_alternative(bp_orders, order_id, bp_symbol)
