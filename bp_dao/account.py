@@ -16,8 +16,8 @@ class AccountDAO:
 		return self.client.request("GET", "/api/v1/balances", instruction="balanceQuery", signed=True)
 
 	def positions(self, symbol: Optional[str] = None) -> Any:
-		# GET /api/v1/positions, instruction: positionQuery
+		# GET /api/v1/position, instruction: positionQuery
 		params: Dict[str, Any] = {}
 		if symbol:
 			params["symbol"] = symbol
-		return self.client.request("GET", "/api/v1/positions", params=params or None, instruction="positionQuery", signed=True)
+		return self.client.request("GET", "/api/v1/position", params=params or None, instruction="positionQuery", signed=True)
