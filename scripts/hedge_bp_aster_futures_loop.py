@@ -541,8 +541,8 @@ def execute_hedge_cycle(bp_markets, bp_orders, aster_trade, bp_symbol, aster_sym
 					
 					# 检查平仓订单状态
 					if isinstance(close_resp, dict) and "orderId" in close_resp:
-						close_order_id = str(close_resp["orderId"])
-						close_status = aster_trade.query_order(aster_symbol, close_order_id)
+						close_order_id = int(close_resp["orderId"])
+						close_status = aster_trade.get_order(aster_symbol, close_order_id)
 						if close_status:
 							print(f"[Leg2] ASTER合约平仓订单状态: {close_status}")
 					else:
